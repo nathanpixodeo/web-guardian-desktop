@@ -8,42 +8,36 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title('WebGuardian — Security Scanner')
-        self.geometry('1200x820')
-        self.minsize(960, 680)
+        self.geometry('1160x780')
+        self.minsize(920, 640)
 
-        theme_path = os.path.join(os.path.dirname(__file__), '..', 'assets', 'theme.json')
-        theme_path = os.path.normpath(os.path.abspath(theme_path))
+        theme_path = os.path.normpath(os.path.join(
+            os.path.dirname(__file__), '..', 'assets', 'theme.json'))
         if os.path.isfile(theme_path):
             try:
-                with open(theme_path) as f:
+                with open(theme_path, encoding='utf-8') as f:
                     theme = json.load(f)
-                ctk.set_default_color_theme('green')
-                self._apply_theme(theme)
+                self._load_theme(theme)
             except Exception:
-                ctk.set_default_color_theme('green')
-        else:
-            ctk.set_default_color_theme('green')
+                pass
 
-        ctk.set_appearance_mode('dark')
+        ctk.set_appearance_mode('Dark')
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
-        self.main_window = MainWindow(self)
-        self.main_window.grid(row=0, column=0, sticky='nsew')
+        self.main = MainWindow(self)
+        self.main.grid(row=0, column=0, sticky='nsew')
 
-    def _apply_theme(self, theme):
+    def _load_theme(self, theme):
         for widget, props in theme.items():
-            if hasattr(ctk, widget):
-                for prop, value in props.items():
+            cls = getattr(ctk, widget, None)
+            if cls:
+                for key, val in props.items():
                     try:
-                        if isinstance(value, list):
-                            setattr(getattr(ctk, widget), prop, value)
-                        else:
-                            setattr(getattr(ctk, widget), prop, value)
+                        setattr(cls, key, val)
                     except Exception:
                         pass
 
 
 def run():
-    app = App()
-    app.mainloop()
+    App().mainloop()
