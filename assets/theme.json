@@ -1,0 +1,72 @@
+{
+    "CTk": {
+        "fg_color": ["#0d1117", "#0d1117"]
+    },
+    "CTkFrame": {
+        "fg_color": ["#161b22", "#161b22"],
+        "top_fg_color": ["#161b22", "#161b22"],
+        "border_color": ["#30363d", "#30363d"],
+        "corner_radius": 8
+    },
+    "CTkButton": {
+        "fg_color": ["#238636", "#238636"],
+        "hover_color": ["#2ea043", "#2ea043"],
+        "text_color": ["#ffffff", "#ffffff"],
+        "border_width": 0,
+        "corner_radius": 6
+    },
+    "CTkEntry": {
+        "fg_color": ["#0d1117", "#0d1117"],
+        "border_color": ["#30363d", "#30363d"],
+        "text_color": ["#e6edf3", "#e6edf3"],
+        "placeholder_text_color": ["#484f58", "#484f58"],
+        "corner_radius": 6
+    },
+    "CTkLabel": {
+        "text_color": ["#e6edf3", "#e6edf3"]
+    },
+    "CTkProgressBar": {
+        "fg_color": ["#21262d", "#21262d"],
+        "progress_color": ["#2ea043", "#2ea043"],
+        "corner_radius": 4,
+        "border_width": 0
+    },
+    "CTkTextbox": {
+        "fg_color": ["#0d1117", "#0d1117"],
+        "text_color": ["#e6edf3", "#e6edf3"],
+        "corner_radius": 6,
+        "border_width": 1,
+        "border_color": ["#30363d", "#30363d"]
+    },
+    "CTkScrollbar": {
+        "fg_color": ["#21262d", "#21262d"],
+        "button_color": ["#484f58", "#484f58"],
+        "button_hover_color": ["#6e7681", "#6e7681"]
+    },
+    "CTkTabview": {
+        "fg_color": ["#161b22", "#161b22"],
+        "text_color": ["#e6edf3", "#e6edf3"],
+        "segmented_button_fg_color": ["#21262d", "#21262d"],
+        "segmented_button_selected_color": ["#238636", "#238636"],
+        "segmented_button_selected_hover_color": ["#2ea043", "#2ea043"],
+        "corner_radius": 8
+    },
+    "CTkSwitch": {
+        "fg_color": ["#30363d", "#30363d"],
+        "progress_color": ["#238636", "#238636"],
+        "button_color": ["#e6edf3", "#e6edf3"]
+    },
+    "CTkCheckBox": {
+        "fg_color": ["#30363d", "#30363d"],
+        "checkmark_color": ["#0d1117", "#0d1117"],
+        "border_color": ["#484f58", "#484f58"],
+        "hover_color": ["#21262d", "#21262d"]
+    },
+    "CTkOptionMenu": {
+        "fg_color": ["#161b22", "#161b22"],
+        "button_color": ["#21262d", "#21262d"],
+        "text_color": ["#e6edf3", "#e6edf3"],
+        "dropdown_fg_color": ["#161b22", "#161b22"],
+        "dropdown_hover_color": ["#21262d", "#21262d"]
+    }
+}
