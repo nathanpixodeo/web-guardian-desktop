@@ -11,7 +11,7 @@ from PyQt6.QtCore import QObject, Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen
 from PyQt6.QtWidgets import (
     QAbstractItemView,
-    QApplication,
+    QAbstractScrollArea,
     QCheckBox,
     QComboBox,
     QFileDialog,
@@ -26,11 +26,13 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QProgressBar,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
     QSpinBox,
     QStackedWidget,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -47,8 +49,6 @@ APP_VERSION = "1.1.0"
 GREEN = "#19b394"
 GREEN_DARK = "#10977d"
 RED = "#ed5a5a"
-AMBER = "#f2a93b"
-BLUE = "#4b8df8"
 SEVERITY_COLORS = {
     "critical": "#ed5a5a",
     "high": "#f28b45",
@@ -64,15 +64,6 @@ def font(size: int = 10, bold: bool = False, mono: bool = False) -> QFont:
     return QFont(family, size, QFont.Weight.DemiBold if bold else QFont.Weight.Normal)
 
 
-def clear_layout(layout) -> None:
-    while layout.count():
-        item = layout.takeAt(0)
-        if item.widget():
-            item.widget().deleteLater()
-        elif item.layout():
-            clear_layout(item.layout())
-
-
 def section_title(title: str, subtitle: str) -> QVBoxLayout:
     block = QVBoxLayout()
     block.setSpacing(3)
@@ -82,6 +73,8 @@ def section_title(title: str, subtitle: str) -> QVBoxLayout:
     description = QLabel(subtitle)
     description.setObjectName("muted")
     description.setFont(font(10))
+    description.setWordWrap(True)
+    description.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
     block.addWidget(heading)
     block.addWidget(description)
     return block
@@ -94,6 +87,53 @@ def card() -> tuple[QFrame, QVBoxLayout]:
     layout.setContentsMargins(20, 18, 20, 18)
     layout.setSpacing(10)
     return frame, layout
+
+
+def configure_table(table: QTableWidget) -> None:
+    table.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored)
+    table.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
+    table.setMinimumWidth(0)
+    table.setWordWrap(False)
+    table.setTextElideMode(Qt.TextElideMode.ElideMiddle)
+    table.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+    table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+    table.setAlternatingRowColors(True)
+    table.setShowGrid(False)
+
+
+def show_empty_state(table: QTableWidget, columns: int, message: str) -> None:
+    table.clearSpans()
+    table.setRowCount(1)
+    table.setSpan(0, 0, 1, columns)
+    item = QTableWidgetItem(message)
+    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+    item.setForeground(QColor("#8fa0b3"))
+    item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+    table.setItem(0, 0, item)
+    table.setRowHeight(0, 56)
+
+
+class ElidedLabel(QLabel):
+    """Single-line label that never forces its parent wider than the viewport."""
+
+    def __init__(self, text: str = "", parent=None):
+        super().__init__(parent)
+        self._full_text = ""
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.setText(text)
+
+    def setText(self, text: str) -> None:
+        self._full_text = str(text or "")
+        self.setToolTip(self._full_text)
+        self._update_elision()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_elision()
+
+    def _update_elision(self):
+        available = max(20, self.width() - 4)
+        super().setText(self.fontMetrics().elidedText(self._full_text, Qt.TextElideMode.ElideMiddle, available))
 
 
 class RingProgress(QWidget):
@@ -191,8 +231,12 @@ class DashboardPage(QWidget):
         text.setSpacing(3)
         self.status_title = QLabel("Đang kiểm tra trạng thái")
         self.status_title.setFont(font(18, True))
+        self.status_title.setWordWrap(True)
+        self.status_title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.status_detail = QLabel("")
         self.status_detail.setObjectName("muted")
+        self.status_detail.setWordWrap(True)
+        self.status_detail.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         text.addWidget(self.status_title)
         text.addWidget(self.status_detail)
         hero_layout.addLayout(text, 1)
@@ -242,6 +286,7 @@ class DashboardPage(QWidget):
         header.addWidget(all_reports)
         recent_layout.addLayout(header)
         self.recent_table = QTableWidget(0, 4)
+        configure_table(self.recent_table)
         self.recent_table.setHorizontalHeaderLabels(["Thời gian", "Thư mục", "Tệp đã quét", "Phát hiện"])
         self.recent_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.recent_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
@@ -287,6 +332,10 @@ class DashboardPage(QWidget):
         self.shield.style().unpolish(self.shield)
         self.shield.style().polish(self.shield)
 
+        self.recent_table.clearSpans()
+        if not reports:
+            show_empty_state(self.recent_table, 4, "Chưa có hoạt động · Chạy Quét thông minh để tạo báo cáo đầu tiên")
+            return
         self.recent_table.setRowCount(len(reports))
         for row, report in enumerate(reports):
             values = [
@@ -297,6 +346,7 @@ class DashboardPage(QWidget):
             ]
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
+                item.setToolTip(value)
                 if column == 3 and int(value or 0) > 0:
                     item.setForeground(QColor(RED))
                 self.recent_table.setItem(row, column, item)
@@ -336,9 +386,15 @@ class ScanPage(QWidget):
         self.stop_button.clicked.connect(self.main.cancel_scan)
         top.addWidget(self.stop_button)
         controls_layout.addLayout(top)
+        scan_options = QHBoxLayout()
         self.mode_help = QLabel("Cân bằng tốc độ và độ bao phủ; bỏ qua thư viện và tệp sinh tự động.")
         self.mode_help.setObjectName("muted")
-        controls_layout.addWidget(self.mode_help)
+        scan_options.addWidget(self.mode_help, 1)
+        self.permission_scan = QCheckBox("Kiểm tra quyền tệp")
+        self.permission_scan.setChecked(bool(main.settings.get("check_permissions", False)))
+        self.permission_scan.setToolTip("Bật để phát hiện tệp nhạy cảm có quyền đọc/ghi quá rộng")
+        scan_options.addWidget(self.permission_scan)
+        controls_layout.addLayout(scan_options)
         self.mode.currentTextChanged.connect(self.update_mode_help)
         root.addWidget(controls)
 
@@ -351,9 +407,8 @@ class ScanPage(QWidget):
         details = QVBoxLayout()
         self.phase = QLabel("Đang chuẩn bị")
         self.phase.setFont(font(14, True))
-        self.current_file = QLabel("")
+        self.current_file = ElidedLabel("")
         self.current_file.setObjectName("monoMuted")
-        self.current_file.setWordWrap(False)
         details.addWidget(self.phase)
         details.addWidget(self.current_file)
         details.addSpacing(8)
@@ -382,7 +437,7 @@ class ScanPage(QWidget):
 
         results, results_layout = card()
         result_header = QHBoxLayout()
-        self.result_title = QLabel("Kết quả phát hiện")
+        self.result_title = QLabel("Kết quả quét")
         self.result_title.setFont(font(13, True))
         result_header.addWidget(self.result_title)
         result_header.addStretch()
@@ -395,16 +450,61 @@ class ScanPage(QWidget):
         self.export_button.clicked.connect(self.export_report)
         result_header.addWidget(self.export_button)
         results_layout.addLayout(result_header)
-        self.findings = QTableWidget(0, 4)
-        self.findings.setHorizontalHeaderLabels(["Mức độ", "Phát hiện", "Tệp / dòng", "Xử lý"])
+        self.result_tabs = QTabWidget()
+        self.result_tabs.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
+        self.result_tabs.setMinimumWidth(0)
+        finding_tab = QWidget()
+        finding_layout = QVBoxLayout(finding_tab)
+        finding_layout.setContentsMargins(0, 8, 0, 0)
+        finding_layout.setSpacing(10)
+        self.findings = QTableWidget(0, 5)
+        configure_table(self.findings)
+        self.findings.setHorizontalHeaderLabels(["Mức độ", "Tệp", "Dòng", "Vấn đề", "Xử lý"])
         self.findings.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.findings.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.findings.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.findings.verticalHeader().setVisible(False)
+        self.findings.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.findings.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.findings.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.findings.itemSelectionChanged.connect(lambda: self.quarantine_button.setEnabled(bool(self.findings.selectedItems())))
-        results_layout.addWidget(self.findings)
+        self.findings.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.findings.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.findings.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.findings.itemSelectionChanged.connect(self.show_finding_details)
+        finding_layout.addWidget(self.findings, 1)
+        detail_box = QFrame()
+        detail_box.setObjectName("softBox")
+        detail_layout = QVBoxLayout(detail_box)
+        detail_layout.setContentsMargins(14, 10, 14, 10)
+        detail_title = QLabel("Chi tiết phát hiện")
+        detail_title.setFont(font(11, True))
+        self.finding_detail = QPlainTextEdit("Chọn một phát hiện để xem rule, SHA-256 và khuyến nghị xử lý.")
+        self.finding_detail.setObjectName("findingDetail")
+        self.finding_detail.setReadOnly(True)
+        self.finding_detail.setMinimumHeight(82)
+        self.finding_detail.setMaximumHeight(126)
+        detail_layout.addWidget(detail_title)
+        detail_layout.addWidget(self.finding_detail)
+        finding_layout.addWidget(detail_box)
+
+        file_tab = QWidget()
+        file_layout = QVBoxLayout(file_tab)
+        file_layout.setContentsMargins(0, 8, 0, 0)
+        self.scanned_files = QTableWidget(0, 6)
+        configure_table(self.scanned_files)
+        self.scanned_files.setHorizontalHeaderLabels(["Trạng thái", "Tệp đã quét", "Loại", "Kích thước", "Phát hiện", "SHA-256"])
+        self.scanned_files.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.scanned_files.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.scanned_files.verticalHeader().setVisible(False)
+        self.scanned_files.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.scanned_files.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.scanned_files.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.scanned_files.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.scanned_files.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.scanned_files.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        file_layout.addWidget(self.scanned_files)
+        self.result_tabs.addTab(finding_tab, "Phát hiện (0)")
+        self.result_tabs.addTab(file_tab, "Tệp đã quét (0)")
+        results_layout.addWidget(self.result_tabs)
         root.addWidget(results, 1)
 
     def update_mode_help(self, text):
@@ -437,7 +537,13 @@ class ScanPage(QWidget):
 
     def begin(self):
         self.result = None
+        self.findings.clearSpans()
+        self.scanned_files.clearSpans()
         self.findings.setRowCount(0)
+        self.scanned_files.setRowCount(0)
+        self.result_tabs.setTabText(0, "Phát hiện (0)")
+        self.result_tabs.setTabText(1, "Tệp đã quét (0)")
+        self.finding_detail.setPlainText("Chọn một phát hiện để xem rule, SHA-256 và khuyến nghị xử lý.")
         self.progress_card.setVisible(True)
         self.start_button.setVisible(False)
         self.stop_button.setVisible(True)
@@ -471,16 +577,28 @@ class ScanPage(QWidget):
         severity_item = QTableWidgetItem(severity.upper())
         severity_item.setForeground(QColor(SEVERITY_COLORS.get(severity, "#8b98a8")))
         severity_item.setData(Qt.ItemDataRole.UserRole, finding)
-        location = finding.get("file", "")
-        if finding.get("line"):
-            location += f":{finding['line']}"
+        file_path = finding.get("file", "")
+        file_item = QTableWidgetItem(file_path)
+        file_item.setToolTip(file_path)
+        category = finding.get("category", "security")
         self.findings.setItem(row, 0, severity_item)
-        self.findings.setItem(row, 1, QTableWidgetItem(finding.get("message", "")))
-        self.findings.setItem(row, 2, QTableWidgetItem(location))
-        self.findings.setItem(row, 3, QTableWidgetItem(finding.get("action", "Chưa xử lý")))
+        self.findings.setItem(row, 1, file_item)
+        self.findings.setItem(row, 2, QTableWidgetItem(str(finding.get("line") or "—")))
+        issue = f"{category} · {finding.get('message', '')}"
+        issue_item = QTableWidgetItem(issue)
+        issue_item.setToolTip(issue)
+        self.findings.setItem(row, 3, issue_item)
+        action = {"none": "Chưa xử lý", "quarantined": "Đã cách ly"}.get(
+            finding.get("action", "none"), finding.get("action", "Chưa xử lý")
+        )
+        self.findings.setItem(row, 4, QTableWidgetItem(action))
+        self.result_tabs.setTabText(0, f"Phát hiện ({self.findings.rowCount()})")
 
     def on_complete(self, result: dict):
         self.result = result
+        if self.findings.rowCount() == 0:
+            for finding in result.get("findings", []):
+                self.add_finding(finding)
         self.start_button.setVisible(True)
         self.stop_button.setVisible(False)
         self.export_button.setEnabled(True)
@@ -489,7 +607,38 @@ class ScanPage(QWidget):
         status = "Đã hủy quét" if result.get("status") == "cancelled" else "Quét hoàn tất"
         total = result.get("summary", {}).get("total", 0)
         self.phase.setText(f"{status} · {total} phát hiện")
-        self.result_title.setText(f"Kết quả phát hiện ({total})")
+        files = result.get("scanned_files", [])
+        self.result_title.setText(f"Kết quả quét · {len(files)} tệp · {total} phát hiện")
+        self.result_tabs.setTabText(0, f"Phát hiện ({total})")
+        self.result_tabs.setTabText(1, f"Tệp đã quét ({len(files)})")
+        self.scanned_files.setRowCount(len(files))
+        status_labels = {"clean": "Sạch", "threat": "Có vấn đề", "binary": "Tệp nhị phân"}
+        for row, record in enumerate(files):
+            status_key = record.get("status", "clean")
+            status_item = QTableWidgetItem(status_labels.get(status_key, status_key))
+            status_item.setForeground(QColor(RED if status_key == "threat" else GREEN))
+            path_item = QTableWidgetItem(record.get("file", ""))
+            path_item.setToolTip(record.get("file", ""))
+            size = record.get("size", 0)
+            size_text = f"{size / 1024:.1f} KB" if size < 1024 * 1024 else f"{size / (1024 * 1024):.1f} MB"
+            values = [
+                status_item,
+                path_item,
+                QTableWidgetItem(record.get("extension", "")),
+                QTableWidgetItem(size_text),
+                QTableWidgetItem(str(record.get("detections", 0))),
+                QTableWidgetItem(record.get("sha256", "")),
+            ]
+            for column, item in enumerate(values):
+                item.setToolTip(item.text())
+                self.scanned_files.setItem(row, column, item)
+        if total == 0:
+            show_empty_state(self.findings, 5, "Không có phát hiện · Xem tab Tệp đã quét để kiểm tra inventory")
+            self.finding_detail.setPlainText("Không phát hiện mã độc hoặc cấu hình nguy hiểm. Xem tab “Tệp đã quét” để kiểm tra danh sách tệp cụ thể.")
+        elif self.findings.rowCount():
+            self.findings.setCurrentCell(0, 0)
+        if not files:
+            show_empty_state(self.scanned_files, 6, "Không có tệp phù hợp phạm vi quét · Kiểm tra exclusion và chế độ quét")
 
     def on_error(self, message: str):
         self.start_button.setVisible(True)
@@ -497,11 +646,43 @@ class ScanPage(QWidget):
         self.phase.setText("Không thể hoàn tất quét")
         QMessageBox.critical(self, "Lỗi quét", message)
 
+    def show_report(self, result: dict):
+        self.path.setText(result.get("scanned_path", ""))
+        self.progress_card.setVisible(False)
+        self.findings.clearSpans()
+        self.scanned_files.clearSpans()
+        self.findings.setRowCount(0)
+        self.scanned_files.setRowCount(0)
+        self.finding_detail.setPlainText("Chọn một phát hiện để xem rule, SHA-256 và khuyến nghị xử lý.")
+        self.on_complete(result)
+
     def selected_finding(self) -> tuple[int, dict] | tuple[None, None]:
         row = self.findings.currentRow()
         if row < 0:
             return None, None
         return row, self.findings.item(row, 0).data(Qt.ItemDataRole.UserRole)
+
+    def show_finding_details(self):
+        row, finding = self.selected_finding()
+        self.quarantine_button.setEnabled(bool(finding and os.path.isfile(finding.get("file", ""))))
+        if not finding:
+            return
+        recommendations = {
+            "critical": "Cách ly tệp ngay, đối chiếu commit tạo tệp và thay toàn bộ secret liên quan.",
+            "high": "Kiểm tra luồng dữ liệu vào hàm nguy hiểm; cách ly nếu không phải hành vi có chủ đích.",
+            "medium": "Rà soát cấu hình và giới hạn khả năng truy cập trước khi triển khai production.",
+            "low": "Đánh giá trong đợt hardening tiếp theo.",
+            "info": "Thông tin tham khảo; chưa cần hành động khẩn cấp.",
+        }
+        self.finding_detail.setPlainText(
+            f"Loại: {finding.get('category', 'security')}\n"
+            f"Rule: {finding.get('rule_id') or 'built-in'}\n"
+            f"Tệp: {finding.get('file') or 'Không gắn với tệp'}\n"
+            f"Dòng: {finding.get('line') or 'Không xác định'}\n"
+            f"SHA-256: {finding.get('sha256') or 'Không có'}\n"
+            f"Vấn đề: {finding.get('message', '')}\n"
+            f"Khuyến nghị: {recommendations.get(finding.get('severity', 'info'), recommendations['info'])}"
+        )
 
     def quarantine_selected(self):
         row, finding = self.selected_finding()
@@ -523,7 +704,7 @@ class ScanPage(QWidget):
                         stored["action"] = "quarantined"
                         break
                 self.main.history.save(self.result)
-            self.findings.item(row, 3).setText("Đã cách ly")
+            self.findings.item(row, 4).setText("Đã cách ly")
             self.quarantine_button.setEnabled(False)
             self.main.refresh_pages()
         except Exception as exc:
@@ -560,6 +741,7 @@ class QuarantinePage(QWidget):
         header.addWidget(delete)
         layout.addLayout(header)
         self.table = QTableWidget(0, 5)
+        configure_table(self.table)
         self.table.setHorizontalHeaderLabels(["Thời gian", "Phát hiện", "Đường dẫn gốc", "Kích thước", "SHA-256"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -572,12 +754,17 @@ class QuarantinePage(QWidget):
     def refresh(self):
         rows = self.main.quarantine.list()
         self.count.setText(f"{len(rows)} mục")
+        self.table.clearSpans()
+        if not rows:
+            show_empty_state(self.table, 5, "Khu vực cách ly đang trống · Chọn một finding trong kết quả quét để cách ly")
+            return
         self.table.setRowCount(len(rows))
         for row, item in enumerate(rows):
             values = [item.get("quarantined_at", "").replace("T", " ")[:19], item.get("detection", ""),
                       item.get("original_path", ""), f"{item.get('size', 0) / 1024:.1f} KB", item.get("sha256", "")]
             for column, value in enumerate(values):
                 cell = QTableWidgetItem(value)
+                cell.setToolTip(value)
                 if column == 0:
                     cell.setData(Qt.ItemDataRole.UserRole, item.get("id"))
                 self.table.setItem(row, column, cell)
@@ -633,6 +820,7 @@ class ReportsPage(QWidget):
         header.addWidget(remove)
         layout.addLayout(header)
         self.table = QTableWidget(0, 6)
+        configure_table(self.table)
         self.table.setHorizontalHeaderLabels(["Thời gian", "Chế độ", "Đường dẫn", "Đã quét", "Phát hiện", "Trạng thái"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -644,6 +832,10 @@ class ReportsPage(QWidget):
 
     def refresh(self):
         reports = self.main.history.list()
+        self.table.clearSpans()
+        if not reports:
+            show_empty_state(self.table, 6, "Chưa có báo cáo · Bắt đầu một lượt quét để tạo lịch sử")
+            return
         self.table.setRowCount(len(reports))
         for row, report in enumerate(reports):
             values = [report.get("completed_at", "").replace("T", " ")[:19], report.get("scan_mode", "smart"),
@@ -651,6 +843,7 @@ class ReportsPage(QWidget):
                       str(report.get("summary", {}).get("total", 0)), report.get("status", "complete")]
             for column, value in enumerate(values):
                 cell = QTableWidgetItem(value)
+                cell.setToolTip(value)
                 if column == 0:
                     cell.setData(Qt.ItemDataRole.UserRole, report.get("scan_id"))
                 if column == 4 and int(value or 0):
@@ -665,14 +858,8 @@ class ReportsPage(QWidget):
         report = self.main.history.get(self.selected_id() or "")
         if not report:
             return
-        summary = report.get("summary", {})
-        stats = report.get("stats", {})
-        text = (f"Đường dẫn: {report.get('scanned_path', '')}\n"
-                f"Tệp đã quét: {stats.get('files_scanned', 0)}\n"
-                f"Thời gian: {stats.get('elapsed_ms', 0) / 1000:.2f}s\n"
-                f"Critical: {summary.get('critical', 0)} · High: {summary.get('high', 0)} · "
-                f"Medium: {summary.get('medium', 0)} · Tổng: {summary.get('total', 0)}")
-        QMessageBox.information(self, "Chi tiết báo cáo", text)
+        self.main.navigate(1)
+        self.main.scan_page.show_report(report)
 
     def delete(self):
         report_id = self.selected_id()
@@ -685,7 +872,6 @@ class UpdatesPage(QWidget):
     def __init__(self, main):
         super().__init__()
         self.main = main
-        self.available = False
         root = QVBoxLayout(self)
         root.setContentsMargins(32, 28, 32, 28)
         root.setSpacing(16)
@@ -702,6 +888,8 @@ class UpdatesPage(QWidget):
         self.title.setFont(font(16, True))
         self.detail = QLabel("")
         self.detail.setObjectName("muted")
+        self.detail.setWordWrap(True)
+        self.detail.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         texts.addWidget(self.title)
         texts.addWidget(self.detail)
         head.addLayout(texts, 1)
@@ -711,8 +899,12 @@ class UpdatesPage(QWidget):
         self.install_button.setObjectName("primary")
         self.install_button.setVisible(False)
         self.install_button.clicked.connect(lambda: self.run_action("install"))
+        self.rollback_button = QPushButton("Khôi phục bản trước")
+        self.rollback_button.setVisible(False)
+        self.rollback_button.clicked.connect(self.rollback)
         head.addWidget(self.check_button)
         head.addWidget(self.install_button)
+        head.addWidget(self.rollback_button)
         layout.addLayout(head)
         self.progress = QProgressBar()
         self.progress.setVisible(False)
@@ -751,8 +943,14 @@ class UpdatesPage(QWidget):
     def refresh(self):
         data = self.main.updater.to_dict()
         self.detail.setText(f"Phiên bản {data['version']} · build {data['build']} · phát hành {data['date'] or 'bundled'}")
+        self.rollback_button.setVisible(self.main.updater.backup_file.is_file())
         for key, label in self.info.items():
             label.setText(str(data.get(key) or "Chưa có"))
+
+    def rollback(self):
+        if QMessageBox.question(self, "Khôi phục CSDL", "Khôi phục phiên bản nhận diện trước đó?") != QMessageBox.StandardButton.Yes:
+            return
+        self.on_result(self.main.updater.rollback())
 
     def run_action(self, action: str):
         self.check_button.setEnabled(False)
@@ -777,9 +975,14 @@ class UpdatesPage(QWidget):
             self.title.setText("Có CSDL nhận diện mới")
             self.detail.setText(f"Phiên bản {result.get('remote_version')} · build {result.get('remote_build')}")
             self.install_button.setVisible(True)
-        elif status in {"up_to_date", "installed"}:
+        elif status in {"up_to_date", "installed", "rolled_back"}:
             self.icon.setText("✓")
-            self.title.setText("CSDL nhận diện đã mới nhất" if status == "up_to_date" else "Cập nhật hoàn tất")
+            titles = {
+                "up_to_date": "CSDL nhận diện đã mới nhất",
+                "installed": "Cập nhật hoàn tất",
+                "rolled_back": "Đã khôi phục CSDL trước",
+            }
+            self.title.setText(titles[status])
             self.detail.setText(result.get("message", ""))
             self.install_button.setVisible(False)
         else:
@@ -796,6 +999,7 @@ class SettingsPage(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         content = QWidget()
         scroll.setWidget(content)
         outer = QVBoxLayout(self)
@@ -810,25 +1014,27 @@ class SettingsPage(QWidget):
         heading = QLabel("Tùy chọn quét")
         heading.setFont(font(13, True))
         general_layout.addWidget(heading)
-        row = QHBoxLayout()
+        options = QGridLayout()
+        options.setHorizontalSpacing(14)
+        options.setVerticalSpacing(12)
         self.permissions = QCheckBox("Kiểm tra quyền tệp không an toàn")
-        self.permissions.setChecked(bool(main.settings.get("check_permissions", True)))
-        row.addWidget(self.permissions)
-        row.addSpacing(30)
-        row.addWidget(QLabel("Kích thước tệp tối đa"))
+        self.permissions.setChecked(bool(main.settings.get("check_permissions", False)))
+        options.addWidget(self.permissions, 0, 0, 1, 4)
+        options.addWidget(QLabel("Kích thước tệp tối đa"), 1, 0)
         self.max_size = QSpinBox()
         self.max_size.setRange(1, 250)
         self.max_size.setSuffix(" MB")
         self.max_size.setValue(int(main.settings.get("max_file_size_mb", 10)))
-        row.addWidget(self.max_size)
-        row.addSpacing(30)
-        row.addWidget(QLabel("Giao diện"))
+        self.max_size.setFixedWidth(110)
+        options.addWidget(self.max_size, 1, 1)
+        options.addWidget(QLabel("Giao diện"), 1, 2)
         self.theme = QComboBox()
         self.theme.addItems(["Tối", "Sáng"])
         self.theme.setCurrentText("Tối" if main.settings.get("theme", "dark") == "dark" else "Sáng")
-        row.addWidget(self.theme)
-        row.addStretch()
-        general_layout.addLayout(row)
+        self.theme.setFixedWidth(120)
+        options.addWidget(self.theme, 1, 3)
+        options.setColumnStretch(4, 1)
+        general_layout.addLayout(options)
         root.addWidget(general)
 
         exclusions, exclusions_layout = card()
@@ -837,19 +1043,26 @@ class SettingsPage(QWidget):
         ex_title.setFont(font(13, True))
         ex_head.addWidget(ex_title)
         ex_head.addStretch()
+        exclusions_layout.addLayout(ex_head)
+        ex_controls = QHBoxLayout()
+        ex_controls.setSpacing(8)
         self.exclusion_input = QLineEdit()
         self.exclusion_input.setPlaceholderText("Ví dụ: storage/cache/**")
-        self.exclusion_input.setFixedWidth(260)
-        ex_head.addWidget(self.exclusion_input)
+        ex_controls.addWidget(self.exclusion_input, 1)
         add = QPushButton("Thêm")
         add.clicked.connect(self.add_exclusion)
         remove = QPushButton("Xóa")
         remove.clicked.connect(self.remove_exclusion)
-        ex_head.addWidget(add)
-        ex_head.addWidget(remove)
-        exclusions_layout.addLayout(ex_head)
+        ex_controls.addWidget(add)
+        ex_controls.addWidget(remove)
+        exclusions_layout.addLayout(ex_controls)
         self.exclusions = QListWidget()
-        self.exclusions.addItems(main.settings.get("exclusions", []))
+        self.exclusions.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.exclusions.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.exclusions.setTextElideMode(Qt.TextElideMode.ElideMiddle)
+        self.exclusions.setUniformItemSizes(True)
+        for value in main.settings.get("exclusions", []):
+            self._append_exclusion(value)
         self.exclusions.setMaximumHeight(150)
         exclusions_layout.addWidget(self.exclusions)
         root.addWidget(exclusions)
@@ -872,6 +1085,7 @@ class SettingsPage(QWidget):
         about_layout.addWidget(about_title)
         about_text = QLabel("Bộ quét bảo mật mã nguồn chạy cục bộ. Không tải mã nguồn của bạn lên máy chủ.")
         about_text.setObjectName("muted")
+        about_text.setWordWrap(True)
         about_layout.addWidget(about_text)
         root.addWidget(about)
 
@@ -885,8 +1099,13 @@ class SettingsPage(QWidget):
     def add_exclusion(self):
         value = self.exclusion_input.text().strip()
         if value and not self.exclusions.findItems(value, Qt.MatchFlag.MatchExactly):
-            self.exclusions.addItem(value)
+            self._append_exclusion(value)
             self.exclusion_input.clear()
+
+    def _append_exclusion(self, value: str):
+        item = QListWidgetItem(str(value))
+        item.setToolTip(str(value))
+        self.exclusions.addItem(item)
 
     def remove_exclusion(self):
         for item in self.exclusions.selectedItems():
@@ -902,6 +1121,7 @@ class SettingsPage(QWidget):
             "exclusions": [self.exclusions.item(i).text() for i in range(self.exclusions.count())],
         }
         self.main.settings.update(values)
+        self.main.scan_page.permission_scan.setChecked(values["check_permissions"])
         self.main.apply_theme(values["theme"])
         self.main.updater = SignatureVersion(values["update_url"] or None)
         QMessageBox.information(self, "Đã lưu", "Cài đặt đã được áp dụng.")
@@ -923,6 +1143,7 @@ class MainWindow(QMainWindow):
         self.resize(1240, 790)
 
         central = QWidget()
+        central.setObjectName("appRoot")
         self.setCentralWidget(central)
         root = QHBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)
@@ -968,6 +1189,7 @@ class MainWindow(QMainWindow):
         self.nav.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.nav.setFrameShape(QFrame.Shape.NoFrame)
         self.nav.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         for text in ["⌂   Tổng quan", "⌕   Quét mã độc", "▣   Cách ly", "≡   Báo cáo", "↻   Cập nhật", "⚙   Cài đặt"]:
             self.nav.addItem(QListWidgetItem(text))
         self.nav.setFixedHeight(6 * 46)
@@ -1013,6 +1235,7 @@ class MainWindow(QMainWindow):
         top_layout.addWidget(self.global_status)
         layout.addWidget(topbar)
         self.stack = QStackedWidget()
+        self.stack.setObjectName("pages")
         self.dashboard_page = DashboardPage(self)
         self.scan_page = ScanPage(self)
         self.quarantine_page = QuarantinePage(self)
@@ -1020,6 +1243,7 @@ class MainWindow(QMainWindow):
         self.updates_page = UpdatesPage(self)
         self.settings_page = SettingsPage(self)
         for page in [self.dashboard_page, self.scan_page, self.quarantine_page, self.reports_page, self.updates_page, self.settings_page]:
+            page.setObjectName("page")
             self.stack.addWidget(page)
         layout.addWidget(self.stack, 1)
         root.addWidget(content, 1)
@@ -1042,7 +1266,7 @@ class MainWindow(QMainWindow):
         options = {
             "scan_mode": mode,
             "exclusions": self.settings.get("exclusions", []),
-            "check_permissions": bool(self.settings.get("check_permissions", True)),
+            "check_permissions": self.scan_page.permission_scan.isChecked(),
             "max_file_size_mb": int(self.settings.get("max_file_size_mb", 10)),
         }
         self.settings.set("last_scan_path", path)
@@ -1124,7 +1348,9 @@ class MainWindow(QMainWindow):
         text = "#eef4f7" if dark else "#17202a"
         muted = "#8fa0b3" if dark else "#6d7b88"
         self.setStyleSheet(f"""
-            QMainWindow, QWidget {{ background: {bg}; color: {text}; font-family: 'Segoe UI'; font-size: 10pt; }}
+            QMainWindow, QWidget#appRoot, QStackedWidget#pages, QWidget#page {{ background: {bg}; color: {text}; }}
+            QWidget {{ color: {text}; background: transparent; font-family: 'Segoe UI'; font-size: 10pt; }}
+            QLabel {{ background: transparent; border: none; }}
             QFrame#sidebar {{ background: #101923; border: none; }}
             QLabel#brandMark {{ background: {GREEN}; color: white; border-radius: 11px; font-size: 17px; font-weight: 700; }}
             QLabel#brandName {{ color: #f5fbfd; }}
@@ -1157,10 +1383,22 @@ class MainWindow(QMainWindow):
             QCheckBox {{ color: {text}; spacing: 8px; }} QCheckBox::indicator {{ width: 17px; height: 17px; border: 1px solid {border}; border-radius: 4px; background: {soft}; }}
             QCheckBox::indicator:checked {{ background: {GREEN}; border-color: {GREEN}; }}
             QProgressBar {{ background: {soft}; border: none; border-radius: 4px; height: 8px; }} QProgressBar::chunk {{ background: {GREEN}; border-radius: 4px; }}
+            QTabWidget::pane {{ background: transparent; border: none; border-top: 1px solid {border}; top: -1px; }}
+            QTabBar::tab {{ background: transparent; color: {muted}; border: none; padding: 9px 14px; margin-right: 4px; }}
+            QTabBar::tab:selected {{ color: {GREEN}; border-bottom: 2px solid {GREEN}; font-weight: 600; }}
+            QTabBar::tab:hover:!selected {{ color: {text}; }}
+            QPlainTextEdit#findingDetail {{ background: transparent; color: {muted}; border: none; padding: 0; font-family: 'Cascadia Mono'; font-size: 9pt; selection-background-color: #1b5048; }}
             QTableWidget, QListWidget {{ background: {panel}; color: {text}; border: 1px solid {border}; border-radius: 8px; gridline-color: {border}; alternate-background-color: {soft}; }}
             QTableWidget::item {{ padding: 7px; border-bottom: 1px solid {border}; }} QTableWidget::item:selected, QListWidget::item:selected {{ background: #1b5048; color: #effbf8; }}
             QHeaderView::section {{ background: {soft}; color: {muted}; border: none; border-bottom: 1px solid {border}; padding: 8px; font-weight: 600; }}
-            QScrollArea {{ background: {bg}; border: none; }} QScrollBar:vertical {{ background: transparent; width: 9px; }} QScrollBar::handle:vertical {{ background: {border}; border-radius: 4px; min-height: 32px; }}
+            QScrollArea {{ background: {bg}; border: none; }}
+            QScrollBar:vertical {{ background: transparent; width: 9px; margin: 0; }}
+            QScrollBar::handle:vertical {{ background: {border}; border-radius: 4px; min-height: 32px; }}
+            QScrollBar:horizontal {{ background: transparent; height: 9px; margin: 0; }}
+            QScrollBar::handle:horizontal {{ background: {border}; border-radius: 4px; min-width: 32px; }}
+            QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; background: transparent; border: none; }}
+            QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
+            QToolTip {{ background: {panel}; color: {text}; border: 1px solid {border}; padding: 6px; }}
         """)
 
     def closeEvent(self, event):

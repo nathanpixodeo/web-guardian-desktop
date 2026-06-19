@@ -62,4 +62,4 @@ UI không cập nhật widget từ Python thread. `ScanWorker` và `UpdateWorker
 
 ## Phạm vi không hỗ trợ
 
-Không có kernel driver, process memory scanning, packet inspection hoặc code execution sandbox. Backend FastAPI trong `backend/` là prototype cũ và không thuộc entry point desktop hiện tại.
+Không có kernel driver, process memory scanning, packet inspection hoặc code execution sandbox. Repository chỉ giữ runtime desktop PyQt6 và scan engine đang được sử dụng.

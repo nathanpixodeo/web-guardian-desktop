@@ -8,6 +8,8 @@
 4. Theo dõi finding xuất hiện theo thời gian thực.
 5. Chọn finding có tệp cụ thể và nhấn **Cách ly tệp đã chọn** nếu đã xác minh là nguy hiểm.
 
+Sau khi hoàn tất, tab **Phát hiện** giải thích tệp, dòng, loại vấn đề, rule, SHA-256 và khuyến nghị. Tab **Tệp đã quét** liệt kê inventory của lượt quét, kể cả tệp sạch. Kiểm tra quyền tệp là tùy chọn riêng trên màn hình Quét và mặc định tắt.
+
 ## Chọn chế độ
 
 - Quick cho kiểm tra hằng ngày hoặc CI local.

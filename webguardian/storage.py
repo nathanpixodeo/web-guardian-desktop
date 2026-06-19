@@ -56,7 +56,7 @@ class SettingsStore:
     DEFAULTS = {
         "theme": "dark",
         "language": "vi",
-        "check_permissions": True,
+        "check_permissions": False,
         "scan_archives": False,
         "max_file_size_mb": 10,
         "auto_update": True,

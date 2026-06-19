@@ -10,6 +10,7 @@ WebGuardian là ứng dụng desktop quét mã độc và lỗi cấu hình bả
 - Kết hợp regex, tên backdoor đã biết và SHA-256 reputation nội bộ.
 - Kiểm tra WordPress, Laravel, PrestaShop, `.env`, Composer, PHP ini và quyền tệp.
 - Tiến độ theo tổng số tệp, live detection và hủy quét an toàn.
+- Kết quả gồm danh sách từng tệp đã quét, trạng thái, số phát hiện, rule ID, dòng và SHA-256.
 - Cách ly tệp, xác minh integrity trước khi khôi phục, xóa vĩnh viễn.
 - Lưu lịch sử báo cáo, xem lại và xuất JSON.
 - Exclusion theo đường dẫn/glob; giới hạn kích thước tệp và bật/tắt permission scan.

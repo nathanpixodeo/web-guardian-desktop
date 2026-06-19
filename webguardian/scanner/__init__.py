@@ -1,2 +1,3 @@
 from .core import Scanner
-from .signatures import SIGNATURES
+
+__all__ = ["Scanner"]

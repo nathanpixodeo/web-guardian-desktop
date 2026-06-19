@@ -42,7 +42,7 @@ class Scanner:
         cancel_event: threading.Event | None = None,
         scan_mode: str = "smart",
         exclusions: list[str] | None = None,
-        check_permissions: bool = True,
+        check_permissions: bool = False,
         max_file_size_mb: int = 10,
         signature_database: SignatureDatabase | None = None,
     ):
@@ -66,6 +66,7 @@ class Scanner:
             "completed_at": "",
             "status": "running",
             "findings": [],
+            "scanned_files": [],
             "stats": {
                 "files_discovered": 0,
                 "files_scanned": 0,
@@ -107,6 +108,7 @@ class Scanner:
         pattern: str = "",
         rule_id: str = "",
         sha256: str = "",
+        category: str = "security",
     ) -> None:
         severity = severity if severity in SEVERITIES else "info"
         identity = (file_path, line, rule_id or pattern or message)
@@ -122,6 +124,7 @@ class Scanner:
             "pattern": pattern,
             "rule_id": rule_id,
             "sha256": sha256,
+            "category": category,
             "action": "none",
         }
         self.results["findings"].append(finding)
@@ -204,7 +207,7 @@ class Scanner:
                 digest.update(chunk)
         return digest.hexdigest()
 
-    def _scan_file(self, file_path: str) -> None:
+    def _scan_file(self, file_path: str) -> dict | None:
         ext = Path(file_path).suffix.lower()
         base = os.path.basename(file_path)
         lower = base.lower()
@@ -214,8 +217,16 @@ class Scanner:
             raw = Path(file_path).read_bytes()
         except (OSError, PermissionError):
             self.results["stats"]["read_errors"] += 1
-            return
+            return None
         self.results["stats"]["bytes_scanned"] += size
+        file_record = {
+            "file": file_path,
+            "extension": ext or "(none)",
+            "size": size,
+            "sha256": digest,
+            "detections": 0,
+            "status": "clean",
+        }
 
         known = self.database.hashes.get(digest)
         if known:
@@ -225,25 +236,27 @@ class Scanner:
                 file_path,
                 rule_id="known_hash",
                 sha256=digest,
+                category="known-malware",
             )
 
         if lower in self.database.filenames:
             self._add_finding(
                 "critical", f"Tên tệp trùng mẫu backdoor đã biết: {base}", file_path,
-                rule_id="backdoor_filename", sha256=digest,
+                rule_id="backdoor_filename", sha256=digest, category="webshell",
             )
         for pattern in BACKUP_FILE_PATTERNS:
             if re.search(pattern, lower, re.IGNORECASE):
                 severity = "high" if ext in {".php", ".sql", ".env"} else "medium"
                 self._add_finding(severity, f"Phát hiện tệp sao lưu nhạy cảm: {base}", file_path,
-                                  rule_id="backup_file", sha256=digest)
+                                  rule_id="backup_file", sha256=digest, category="sensitive-file")
                 break
         if lower == ".env":
             self._add_finding("medium", "Tệp cấu hình .env chứa dữ liệu nhạy cảm; cần bảo đảm không public",
-                              file_path, rule_id="sensitive_env", sha256=digest)
+                              file_path, rule_id="sensitive_env", sha256=digest, category="configuration")
 
         if b"\x00" in raw[:4096]:
-            return
+            file_record["status"] = "binary"
+            return file_record
         content = raw.decode("utf-8", errors="ignore")
         lines = content.splitlines()
         for category, rules in self._compiled_builtin.items():
@@ -252,14 +265,15 @@ class Scanner:
                 for number, line_text in enumerate(lines, 1):
                     if regex.search(line_text):
                         self._add_finding(severity, description, file_path, number, source_pattern,
-                                          f"builtin:{category}", digest)
+                                          f"builtin:{category}", digest, category=category)
                         break
         for rule in self.database.rules_for(ext):
             for number, line_text in enumerate(lines, 1):
                 if rule["regex"].search(line_text):
                     self._add_finding(rule["severity"], rule["description"], file_path, number,
-                                      rule["regex"].pattern, rule["id"], digest)
+                                      rule["regex"].pattern, rule["id"], digest, category=rule["category"])
                     break
+        return file_record
 
     def _check_permissions(self, file_path: str) -> None:
         try:
@@ -267,10 +281,10 @@ class Scanner:
             base = os.path.basename(file_path)
             if bool(mode & stat.S_IWOTH) and base.lower().endswith((".php", ".phtml", ".inc")):
                 self._add_finding("high", f"Tệp PHP cho phép mọi người ghi: {base}", file_path,
-                                  rule_id="world_writable")
+                                  rule_id="world_writable", category="file-permission")
             if bool(mode & stat.S_IROTH) and base.lower() in {".env", "wp-config.php", "config.php", "settings.inc.php"}:
                 self._add_finding("high", f"Tệp nhạy cảm cho phép mọi người đọc: {base}", file_path,
-                                  rule_id="world_readable")
+                                  rule_id="world_readable", category="file-permission")
         except OSError:
             pass
 
@@ -278,7 +292,7 @@ class Scanner:
         git_dir = os.path.join(self.root_path, ".git")
         if os.path.isdir(git_dir):
             self._add_finding("medium", "Có thư mục .git; không được public trên máy chủ web", git_dir,
-                              rule_id="git_exposure")
+                              rule_id="git_exposure", category="configuration")
         composer = os.path.join(self.root_path, "composer.json")
         if os.path.isfile(composer):
             try:
@@ -287,10 +301,10 @@ class Scanner:
                 stability = data.get("minimum-stability")
                 if stability and stability != "stable":
                     self._add_finding("medium", f"Composer minimum-stability đang là '{stability}'", composer,
-                                      rule_id="unstable_dependencies")
+                                      rule_id="unstable_dependencies", category="dependency-configuration")
             except (OSError, json.JSONDecodeError):
                 self._add_finding("medium", "composer.json không phải JSON hợp lệ", composer,
-                                  rule_id="invalid_composer")
+                                  rule_id="invalid_composer", category="configuration")
         for filename in ("php.ini", ".user.ini"):
             path = os.path.join(self.root_path, filename)
             if not os.path.isfile(path):
@@ -306,7 +320,7 @@ class Scanner:
             ]
             for pattern, message, severity in checks:
                 if re.search(pattern, content, re.IGNORECASE | re.MULTILINE):
-                    self._add_finding(severity, message, path, rule_id=f"php_ini:{pattern}")
+                    self._add_finding(severity, message, path, rule_id=f"php_ini:{pattern}", category="configuration")
 
     def run(self) -> dict:
         start = time.monotonic()
@@ -324,16 +338,22 @@ class Scanner:
             cms_findings = []
         for finding in cms_findings:
             self._add_finding(finding["severity"], finding["message"], finding.get("file", ""),
-                              finding.get("line", 0), rule_id="cms_configuration")
+                              finding.get("line", 0), rule_id="cms_configuration", category="cms-configuration")
 
         candidates = self._discover()
         total = len(candidates)
         for index, file_path in enumerate(candidates, 1):
             if self.cancel_event.is_set():
                 break
-            self._scan_file(file_path)
+            finding_count_before = self.results["summary"]["total"]
+            file_record = self._scan_file(file_path)
             if self.check_permissions:
                 self._check_permissions(file_path)
+            if file_record:
+                file_record["detections"] = self.results["summary"]["total"] - finding_count_before
+                if file_record["detections"]:
+                    file_record["status"] = "threat"
+                self.results["scanned_files"].append(file_record)
             self.results["stats"]["files_scanned"] += 1
             percent = 5 + int((index / max(total, 1)) * 94)
             if index == 1 or index == total or index % 10 == 0:
