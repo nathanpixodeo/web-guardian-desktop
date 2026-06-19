@@ -1,168 +1,97 @@
 # WebGuardian Desktop
 
-Cross-platform desktop security scanner for PHP projects. Detects malware, backdoors, vulnerabilities, and security misconfigurations in WordPress, Laravel, PrestaShop, and generic PHP applications.
+WebGuardian là ứng dụng desktop quét mã độc và lỗi cấu hình bảo mật trong mã nguồn. Giao diện PyQt6 chạy cục bộ trên Windows/Linux; mã nguồn được phân tích trên máy và không bị tải lên dịch vụ bên ngoài.
 
-Built with Python and CustomTkinter — runs on Windows and Linux.
+## Tính năng
 
-## Features
+- Dashboard trạng thái bảo vệ theo phong cách security suite chuyên nghiệp.
+- Ba chế độ: Quick, Smart và Full scan.
+- Nhận diện PHP, JavaScript/TypeScript, Python, Shell, HTML và cấu hình web.
+- Kết hợp regex, tên backdoor đã biết và SHA-256 reputation nội bộ.
+- Kiểm tra WordPress, Laravel, PrestaShop, `.env`, Composer, PHP ini và quyền tệp.
+- Tiến độ theo tổng số tệp, live detection và hủy quét an toàn.
+- Cách ly tệp, xác minh integrity trước khi khôi phục, xóa vĩnh viễn.
+- Lưu lịch sử báo cáo, xem lại và xuất JSON.
+- Exclusion theo đường dẫn/glob; giới hạn kích thước tệp và bật/tắt permission scan.
+- CSDL nhận diện cập nhật qua HTTPS, xác minh SHA-256, kiểm tra schema/regex, cài atomically và giữ rollback.
+- Dark/light theme và dữ liệu cấu hình bền vững theo tài khoản người dùng.
 
-- **🔍 Deep Malware Detection** — eval+base64, gzinflate, obfuscated code, known backdoor filenames
-- **⚠️ Dangerous Function Scanner** — exec, system, shell_exec, passthru, popen, proc_open, phpinfo
-- **🔐 Sensitive File Detection** — exposed `.env`, backup files (`.bak`, `.old`, `.swp`, `~`), world-writable PHP files
-- **📁 Intelligent Directory Walk** — skips `vendor/`, `node_modules/`, `storage/`, `cache/`, `.git/`, hidden dirs, files >10MB
-- **🎯 CMS-Specific Checks**:
-  - **Laravel** — APP_KEY strength, APP_DEBUG, weak DB passwords, public/.env exposure
-  - **WordPress** — WP_DEBUG, default salts, weak DB passwords, PHP files in uploads
-  - **PrestaShop** — weak DB passwords, dev mode, install directory still present
-  - **Generic** — Git exposure, composer.json integrity, php.ini misconfigurations
-- **📊 Real-Time Progress** — progress bar, file counter, timer, current file, findings count
-- **🌙 Dark Mode UI** — modern CustomTkinter interface with severity-colored results
-- **⚡ Fast** — scans 1000+ files in seconds with filtered directory traversal
-- **📦 Standalone Build** — compile to a single `.exe` (Windows) or binary (Linux) with no Python required
+## Chạy ứng dụng
 
-## Quick Start
+Yêu cầu Python 3.10 trở lên.
 
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run
+```powershell
+python -m pip install -r requirements.txt
 python main.py
 ```
 
-## Usage
+Trên Linux, thay `python` bằng `python3` nếu cần.
 
-1. **Select Directory** — Click "Browse" or type the path to your PHP project
-2. **Configure** — Toggle "Check Permissions" on/off
-3. **Start Scan** — Click "Start Scan", watch real-time progress
-4. **Review Results** — Findings grouped by severity (critical → info), with file paths and line numbers
+## Cấu trúc
 
-### From CLI (headless mode)
+```text
+main.py                         Entry point
+webguardian/app.py              Khởi tạo QApplication
+webguardian/ui/main_window.py   Dashboard và sáu màn hình chức năng
+webguardian/scanner/core.py     Discovery, scan, progress và cancellation
+webguardian/scanner/signatures.py Built-in rules + bộ nạp CSDL JSON
+webguardian/scanner/version.py  Kiểm tra/cài/rollback CSDL
+webguardian/quarantine.py       Cách ly, integrity và khôi phục
+webguardian/storage.py          Settings và lịch sử báo cáo
+assets/signatures.json          CSDL nhận diện đi kèm
+assets/signatures_manifest.json Manifest phát hành mẫu
+tests/                          Unit tests cho engine và dịch vụ
+docs/                           Tài liệu kiến trúc/vận hành
+```
+
+## Cập nhật CSDL nhận diện
+
+Mặc định ứng dụng đọc manifest từ repository chính. Có thể cấu hình endpoint riêng tại **Cài đặt → Máy chủ cập nhật**, hoặc dùng biến môi trường:
+
+```powershell
+$env:WEBGUARDIAN_UPDATE_URL = "https://security.example.com/webguardian/manifest.json"
+python main.py
+```
+
+Manifest phải có `version`, `build`, `database_url` và SHA-256 dài 64 ký tự. Chi tiết ở [docs/SIGNATURE_UPDATES.md](docs/SIGNATURE_UPDATES.md).
+
+## CLI / tích hợp engine
 
 ```python
 from webguardian.scanner import Scanner
 
-s = Scanner('/path/to/project')
-results = s.run()
+result = Scanner(
+    "/path/to/project",
+    scan_mode="smart",
+    exclusions=["storage/cache/**"],
+    max_file_size_mb=20,
+).run()
 
-print(f"Files scanned: {results['stats']['files_scanned']}")
-print(f"Findings: {results['summary']['total']}")
-for finding in results['findings']:
-    print(f"  [{finding['severity']}] {finding['message']} — {finding['file']}:{finding['line']}")
+print(result["summary"])
 ```
 
-## Project Structure
+## Kiểm thử
 
-```
-web-guardian-desktop/
-├── main.py                          # Entry point
-├── requirements.txt                 # Python dependencies
-├── build_windows.bat                # Build script → Windows .exe
-├── build_linux.sh                   # Build script → Linux binary
-├── README.md
-├── webguardian/
-│   ├── __init__.py
-│   ├── app.py                       # CustomTkinter application launcher
-│   ├── scanner/
-│   │   ├── __init__.py
-│   │   ├── core.py                  # Scanner engine (file walk, pattern matching)
-│   │   ├── signatures.py            # All malware signatures, rules, skip lists
-│   │   └── cms.py                   # CMS detectors (Laravel, WordPress, PrestaShop)
-│   └── ui/
-│       ├── __init__.py
-│       └── main_window.py           # Full GUI: config, progress bar, results display
-└── assets/
+```powershell
+python -B -m unittest discover -s tests -v
 ```
 
-## Building Standalone Executable
+## Đóng gói
 
-### Windows
-
-```batch
+```powershell
 build_windows.bat
 ```
-
-Output: `dist/WebGuardian.exe` (single file, no Python required)
-
-### Linux
 
 ```bash
 chmod +x build_linux.sh
 ./build_linux.sh
 ```
 
-Output: `dist/WebGuardian`
+File đầu ra nằm trong `dist/`.
 
-Both builds use **PyInstaller** to package everything into a single executable.
+## Giới hạn an toàn
 
-## Detection Capabilities
-
-### Malware Signatures (critical severity)
-
-| Pattern | Description |
-|---------|-------------|
-| `eval(base64_decode(...))` | Obfuscated code execution |
-| `eval(gzinflate(...))` | Compressed code execution |
-| `preg_replace /e modifier` | Deprecated code execution |
-| `create_function()` | Deprecated code execution |
-| `base64_decode(≥200 chars)` | Large obfuscated payload |
-| `gzinflate(base64_decode(...))` | Nested obfuscation |
-| `str_rot13(base64_decode(...))` | Multi-layer obfuscation |
-| Hex-encoded strings `\xNN\xNN\xNN` | Obfuscated bytecode |
-| `chr(N).chr(N).chr(N)` | Character-by-character string building |
-| Variable function callbacks | Dynamic code execution |
-| Known backdoor filenames | `shell.php`, `c99.php`, `r57.php`, `b374k.php`, etc. |
-
-### Dangerous Functions (high severity)
-
-`eval()`, `exec()`, `shell_exec()`, `system()`, `passthru()`, `popen()`, `proc_open()`, `pcntl_exec()`, `phpinfo()`
-
-### Suspicious Patterns (high severity)
-
-- Direct callbacks from `$_GET`/`$_POST`/`$_REQUEST`
-- Variable variables with superglobals
-- `extract($_...)` — variable injection
-- `parse_str($_...)` — variable injection
-- `move_uploaded_file()` from user input
-- `file_put_contents()` / `fwrite()` from user input
-
-### CMS-Specific Checks
-
-**Laravel:** empty APP_KEY, default APP_KEY, short APP_KEY, APP_DEBUG enabled, weak DB passwords, `.env` in `public/`
-
-**WordPress:** WP_DEBUG enabled, default salts, weak DB passwords, PHP files in uploads directory
-
-**PrestaShop:** weak DB passwords, dev mode, install directory exists, exposed configuration files
-
-### Environment & Config Checks
-
-- `.git` directory exposure
-- `composer.json` integrity and stability
-- `php.ini` / `.user.ini` dangerous settings (display_errors, allow_url_include, expose_php)
-- `.env` files in public directories
-- Backup files (`.bak`, `.old`, `.swp`, `.orig`, `.save`, etc.)
-- World-writable PHP files
-- World-readable sensitive files
-
-## Development
-
-### Adding New Signatures
-
-Edit `webguardian/scanner/signatures.py`:
-
-```python
-SIGNATURES['malware'].append((r'new_pattern_here', 'Description of the pattern'))
-```
-
-### Adding New CMS Detector
-
-1. Create a function in `webguardian/scanner/cms.py`
-2. Register it in `detect_cms_type()` and `Scanner.run()` in `core.py`
-
-## Requirements
-
-- Python 3.10+
-- Dependencies: `customtkinter`, `Pillow` (installed automatically)
+WebGuardian là static scanner cho mã nguồn, không thay thế EDR/antivirus cấp hệ điều hành. Ứng dụng không có kernel driver, real-time filesystem monitor, sandbox thực thi hay cloud reputation. Một phát hiện regex có thể là false positive; hãy xem ngữ cảnh trước khi xóa vĩnh viễn.
 
 ## License
 

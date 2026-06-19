@@ -1,0 +1,8 @@
+{
+  "version": "1.1.0",
+  "build": 2,
+  "published_at": "2026-06-19T00:00:00Z",
+  "database_url": "https://raw.githubusercontent.com/nathanpixodeo/web-guardian-desktop/master/assets/signatures.json",
+  "sha256": "3a3ab1580009628169abeb4ce5587639fd48187546de2c88305426340c6c9711",
+  "minimum_app_version": "1.1.0"
+}

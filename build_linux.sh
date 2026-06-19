@@ -21,7 +21,7 @@ pip3 install pyinstaller
 
 # Build
 echo "[2/3] Building executable..."
-pyinstaller --onefile --windowed --name "WebGuardian" --icon assets/icon.png --add-data "assets:assets" main.py
+pyinstaller --noconfirm --clean --onefile --windowed --name "WebGuardian" --add-data "assets:assets" main.py
 
 echo "[3/3] Done!"
 echo ""

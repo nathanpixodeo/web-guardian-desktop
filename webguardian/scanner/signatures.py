@@ -1,3 +1,14 @@
+"""Built-in and updateable malware signatures."""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+
+from webguardian.storage import get_data_dir
+
+
 SIGNATURES = {
     'malware': [
         (r'eval\s*\(\s*base64_decode\s*\(', 'Obfuscated code execution (eval+base64)'),
@@ -62,7 +73,73 @@ SKIP_DIRECTORIES = {
     'vendor', 'node_modules', 'storage', 'cache', 'bower_components',
     '.git', '.svn', '.hg', '.idea', '.vscode', '__pycache__',
     'logs', 'log', 'tmp', 'temp', 'backup', 'backups',
-    'compiled', 'upload', 'uploads',
+    'compiled', 'dist', 'build', '.next', '.nuxt', 'coverage',
 }
 
-SCAN_EXTENSIONS = {'.php', '.phtml', '.php3', '.php4', '.php5', '.php7', '.pht', '.suspected'}
+SCAN_EXTENSIONS = {
+    '.php', '.phtml', '.php3', '.php4', '.php5', '.php7', '.pht', '.inc',
+    '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.py', '.sh', '.bash',
+    '.html', '.htm', '.htaccess', '.ini', '.conf', '.env', '.suspected',
+}
+
+
+BUNDLED_DATABASE = Path(__file__).resolve().parents[2] / 'assets' / 'signatures.json'
+
+
+class SignatureDatabase:
+    """Loads updateable JSON rules while retaining safe built-in fallbacks."""
+
+    def __init__(self, path: Path | None = None):
+        installed = get_data_dir() / 'signatures.json'
+        self.path = Path(path) if path else (installed if installed.is_file() else BUNDLED_DATABASE)
+        self.version = 'builtin'
+        self.build = 0
+        self.rules: list[dict] = []
+        self.hashes: dict[str, dict] = {}
+        self.filenames = set(KNOWN_BACKDOOR_FILES)
+        self._load()
+
+    def _load(self) -> None:
+        if not self.path.is_file():
+            return
+        try:
+            data = json.loads(self.path.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError):
+            return
+        if not isinstance(data, dict):
+            return
+        self.version = str(data.get('version', self.version))
+        self.build = int(data.get('build', self.build))
+        for raw in data.get('rules', []):
+            if not isinstance(raw, dict) or not raw.get('pattern') or not raw.get('description'):
+                continue
+            try:
+                compiled = re.compile(raw['pattern'], re.IGNORECASE)
+            except (re.error, TypeError):
+                continue
+            extensions = raw.get('extensions', [])
+            self.rules.append({
+                'id': str(raw.get('id', 'external_rule')),
+                'category': str(raw.get('category', 'malware')),
+                'severity': str(raw.get('severity', 'high')).lower(),
+                'extensions': {str(ext).lower() for ext in extensions},
+                'regex': compiled,
+                'description': str(raw['description']),
+            })
+        for raw in data.get('hashes', []):
+            digest = str(raw.get('sha256', '')).lower()
+            if re.fullmatch(r'[a-f0-9]{64}', digest):
+                self.hashes[digest] = raw
+        self.filenames.update(str(name).lower() for name in data.get('filenames', []))
+
+    @property
+    def pattern_count(self) -> int:
+        return sum(len(patterns) for patterns in SIGNATURES.values()) + len(self.rules)
+
+    @property
+    def category_count(self) -> int:
+        return len(SIGNATURES) + len({rule['category'] for rule in self.rules})
+
+    def rules_for(self, extension: str) -> list[dict]:
+        ext = extension.lower()
+        return [rule for rule in self.rules if not rule['extensions'] or ext in rule['extensions']]

@@ -1,5 +1,19 @@
 # WebGuardian Desktop — Changelog
 
+## v1.1.0 (2026-06-19)
+
+### Security suite upgrade
+
+- Rebuilt the desktop interface as a six-section PyQt6 security dashboard
+- Added Quick, Smart and Full scan modes with accurate progress and cancellation
+- Added JavaScript/TypeScript, Python, Shell, HTML and web-config signatures
+- Added updateable JSON rules, known hashes and backdoor filenames
+- Added verified database installation (HTTPS, SHA-256, schema validation, atomic replace, rollback)
+- Added quarantine, integrity-checked restore and permanent deletion
+- Added persistent scan reports, JSON export, settings and glob exclusions
+- Added user-scoped application storage and atomic JSON writes
+- Added engine/service unit tests and security/update documentation
+
 ## v1.0.0 (2026-06-15)
 
 ### Initial Release

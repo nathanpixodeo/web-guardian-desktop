@@ -1,0 +1,103 @@
+{
+  "version": "1.1.0",
+  "build": 2,
+  "published_at": "2026-06-19T00:00:00Z",
+  "rules": [
+    {
+      "id": "php-webshell-request-exec",
+      "category": "webshell",
+      "severity": "critical",
+      "extensions": [".php", ".phtml", ".inc"],
+      "pattern": "(?:eval|assert|system|exec|shell_exec|passthru)\\s*\\(\\s*\\$_(?:GET|POST|REQUEST|COOKIE)",
+      "description": "Web shell executes data received directly from a request"
+    },
+    {
+      "id": "php-reversed-obfuscation",
+      "category": "obfuscation",
+      "severity": "critical",
+      "extensions": [".php", ".phtml", ".inc"],
+      "pattern": "strrev\\s*\\(\\s*['\"](?:edoced_46esab|etalfnizg|etalfniz)\\b",
+      "description": "Reversed malware function name used for obfuscation"
+    },
+    {
+      "id": "php-superglobal-variable-function",
+      "category": "webshell",
+      "severity": "critical",
+      "extensions": [".php", ".phtml", ".inc"],
+      "pattern": "\\$\\{?\\s*\\$_(?:GET|POST|REQUEST|COOKIE)\\s*\\[[^]]+\\]\\s*\\}?\\s*\\(",
+      "description": "Request parameter used as a dynamic function"
+    },
+    {
+      "id": "javascript-eval-atob",
+      "category": "obfuscation",
+      "severity": "high",
+      "extensions": [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".html"],
+      "pattern": "\\beval\\s*\\(\\s*(?:window\\.)?atob\\s*\\(",
+      "description": "JavaScript executes a Base64-decoded payload"
+    },
+    {
+      "id": "javascript-child-process-input",
+      "category": "code-injection",
+      "severity": "high",
+      "extensions": [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"],
+      "pattern": "(?:exec|execSync)\\s*\\([^)]*(?:req\\.(?:query|body|params)|process\\.argv)",
+      "description": "Process execution may use untrusted input"
+    },
+    {
+      "id": "javascript-hidden-iframe",
+      "category": "injection",
+      "severity": "high",
+      "extensions": [".js", ".html", ".htm", ".php"],
+      "pattern": "<iframe[^>]+(?:display\\s*:\\s*none|width\\s*=\\s*['\"]?0|height\\s*=\\s*['\"]?0)",
+      "description": "Hidden iframe injection detected"
+    },
+    {
+      "id": "python-exec-base64",
+      "category": "obfuscation",
+      "severity": "critical",
+      "extensions": [".py"],
+      "pattern": "\\bexec\\s*\\(\\s*(?:base64\\.)?b64decode\\s*\\(",
+      "description": "Python executes a Base64-decoded payload"
+    },
+    {
+      "id": "python-subprocess-shell-input",
+      "category": "code-injection",
+      "severity": "high",
+      "extensions": [".py"],
+      "pattern": "subprocess\\.(?:run|call|Popen)\\s*\\([^\\n]+shell\\s*=\\s*True",
+      "description": "Python subprocess uses shell=True; verify input handling"
+    },
+    {
+      "id": "shell-curl-pipe-shell",
+      "category": "downloader",
+      "severity": "critical",
+      "extensions": [".sh", ".bash"],
+      "pattern": "(?:curl|wget)\\b[^|\\n]*\\|\\s*(?:ba)?sh\\b",
+      "description": "Remote content is piped directly into a shell"
+    },
+    {
+      "id": "htaccess-php-image-handler",
+      "category": "persistence",
+      "severity": "critical",
+      "extensions": [".htaccess", ".conf"],
+      "pattern": "AddHandler\\s+application/x-httpd-php[^\\n]*(?:jpg|jpeg|gif|png)",
+      "description": "Web server configured to execute image files as PHP"
+    },
+    {
+      "id": "generic-long-hex-payload",
+      "category": "obfuscation",
+      "severity": "high",
+      "extensions": [],
+      "pattern": "(?:\\\\x[0-9a-fA-F]{2}){16,}",
+      "description": "Long hexadecimal payload may contain obfuscated code"
+    }
+  ],
+  "hashes": [],
+  "filenames": [
+    "alfa.php",
+    "mini.php",
+    "priv8.php",
+    "indoxploit.php",
+    "wp-vcd.php"
+  ]
+}

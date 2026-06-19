@@ -28,7 +28,7 @@ if %errorlevel% neq 0 (
 
 REM Build
 echo [2/3] Building executable...
-pyinstaller --onefile --windowed --name "WebGuardian" --icon assets\icon.ico --add-data "assets;assets" main.py
+pyinstaller --noconfirm --clean --onefile --windowed --name "WebGuardian" --add-data "assets;assets" main.py
 if %errorlevel% neq 0 (
     echo Error: Build failed.
     exit /b 1
